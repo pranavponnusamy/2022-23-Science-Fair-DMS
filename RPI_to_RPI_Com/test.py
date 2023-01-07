@@ -4,35 +4,40 @@ import time
 import queue
 import psutil
 
+import neurokit2 as nk
+
 from threading import Thread, Event
 
 GAIN = 2/3
-COLLECTION_TIME = 5
+COLLECTION_TIME = 15
 SAMPLE_RATE = 1000
 
-# Global list
+# Used to exchange data between Prcoessing and Analyzer Threads
 my_list = []
+
+# Used to exchange data betwen Collection and Processing Threads 
+q = queue.Queue()
 
 # Lock to synchronize access to the list
 lock = threading.Lock()
 
-q = queue.Queue()
-
+# Flag used to signal list is ready to analyze
 process = Event()
 process.clear()
 
 
 
-
-def ProducerThread():
+# Collects data from the sensors
+def CollectionThread():
     while True:
         # num = adc.read_adc(0, gain=GAIN)
         num = random.randint(0,10)
         q.put(num)      # ---- automatically synchronized 
         time.sleep(0.5)
 
-        
-def ConsumerThread():
+# Recieves data from the collection thread and implements a circular buffer 
+# that enables a moving rectangular time window 
+def ProcessingThread():
     global readings
     l1 = []
     l2 = []
@@ -83,14 +88,17 @@ def ConsumerThread():
 def AnalyzerThread():
     print("Started analysis")
     global readings
+    ppg_signal = []
     while True:
         process.wait()
         print("Analyzer", readings)
+        for reading in readings:
+            ppg_signal.append(reading)
         print('RAM memory % used:', psutil.virtual_memory()[2])
         start = time.time()
         # arr = nk.ppg_simulate(duration=180, sampling_rate=1000, heart_rate=70)
         # ppg_signal = list(arr)
-        ppg_cleaned = nk.ppg_clean(readings)
+        ppg_cleaned = nk.ppg_clean(ppg_signal)
         ppg_signals, info = nk.ppg_process(ppg_cleaned, sampling_rate = SAMPLE_RATE)
         f_hrv = nk.hrv(ppg_signals)
         t_hrv = nk.hrv_time(ppg_signals)
@@ -101,35 +109,14 @@ def AnalyzerThread():
         process.clear()
         readings.clear()
 
-
-def thread_function1():
-    # Acquire the lock to synchronize access to the list
-    with lock:
-        # Append to the list
-        my_list.append(1)
-
-def thread_function2():
-    # Acquire the lock to synchronize access to the list
-    with lock:
-        # Append to the list
-        my_list.append(2)
-
-# Create and start the threads
-thread1 = threading.Thread(target=thread_function1)
-thread2 = threading.Thread(target=thread_function2)
-thread1.start()
-thread2.start()
-
-producer = threading.Thread(target=ProducerThread)
-consumer = threading.Thread(target=ConsumerThread)
+producer = threading.Thread(target=CollectionThread)
+consumer = threading.Thread(target=ProcessingThread)
 analyzer = threading.Thread(target=AnalyzerThread)
 producer.start()
 consumer.start()
 analyzer.start()
 
 # Wait for the threads to finish
-thread1.join()
-thread2.join()
-
-# Print the final state of the list
-print(my_list)
+producer.join()
+consumer.join()
+analyzer.join()
