@@ -6,15 +6,38 @@ import Adafruit_ADS1x15
 import neurokit2 as nk
 
 import copy
-
-
 import psutil
+
+import RPi.GPIO as GPIO
+from lib_nrf24 import NRF24
+import time 
+import spidev
 
 
 GAIN = 2/3
 COLLECTION_TIME = 60
 SAMPLE_RATE = 860
 ADC_CONVERSION_RATE = 1/SAMPLE_RATE
+
+pipes = [[0xE8, 0xE8, 0xF0, 0xF0, 0xE1], [ 0xF0, 0xF0, 0xF0, 0xF0, 0xE1]]
+
+radio = NRF24(GPIO, spidev.SpiDev())
+
+def init():
+    radio.begin(0,4)
+
+    radio.setPayloadSize(32)
+    radio.setChannel(0x76)
+    radio.setDataRate(NRF24.BR_1MBPS)
+    radio.setPALevel(NRF24.PA_MIN)
+
+    radio.setAutoAck(True)
+    radio.enableDynamicPayloads()
+    radio.enableAckPayload()
+
+    radio.openReadingPipe(1,pipes[1])
+    radio.printDetails()
+    radio.startListening()
 
 
 # Create an ADS1115 ADC (16-bit) instance.
@@ -30,6 +53,7 @@ isDataReady.clear()
 class ppgAlgoThread(Thread):
     def run(self):
         global AnalyzerDataBuff
+        init()
         while True:
             isDataReady.wait()
             algoPpgSensorBuff = copy.deepcopy(AnalyzerDataBuff)
@@ -51,6 +75,13 @@ class ppgAlgoThread(Thread):
             print("frequency domain hrv", f_hrv)
             print("time domain hrv", t_hrv)
             print("elaspsed time:", time.time()-start)
+            
+            
+            #Add decision making code
+            time.sleep(10)
+            
+            message = True
+            radio.write(message)
             
 
 class SenReaderThread(Thread):
@@ -110,6 +141,7 @@ class SenDataCollectorThread(Thread):
                 print(time.time()-start)
                 isDataReady.set()
 
+    
 producer = SenReaderThread().start()
 consumer = SenDataCollectorThread().start()
 analyzer = ppgAlgoThread().start()
