@@ -19,25 +19,28 @@ COLLECTION_TIME = 60
 SAMPLE_RATE = 860
 ADC_CONVERSION_RATE = 1/SAMPLE_RATE
 
+GPIO.setmode(GPIO.BCM)
+
 pipes = [[0xE8, 0xE8, 0xF0, 0xF0, 0xE1], [ 0xF0, 0xF0, 0xF0, 0xF0, 0xE1]]
 
 radio = NRF24(GPIO, spidev.SpiDev())
+radio.begin(0,4)
 
-def init():
-    radio.begin(0,4)
+radio.setPayloadSize(32)
+radio.setChannel(0x76)
+radio.setDataRate(NRF24.BR_1MBPS)
+radio.setPALevel(NRF24.PA_MIN)
 
-    radio.setPayloadSize(32)
-    radio.setChannel(0x76)
-    radio.setDataRate(NRF24.BR_1MBPS)
-    radio.setPALevel(NRF24.PA_MIN)
+radio.setAutoAck(True)
+radio.enableDynamicPayloads()
+radio.enableAckPayload()
 
-    radio.setAutoAck(True)
-    radio.enableDynamicPayloads()
-    radio.enableAckPayload()
+radio.openReadingPipe(1,pipes[1])
+radio.printDetails()
+radio.startListening()
 
-    radio.openReadingPipe(1,pipes[1])
-    radio.printDetails()
-    radio.startListening()
+radio.write([0])
+time.sleep(1)
 
 
 # Create an ADS1115 ADC (16-bit) instance.
@@ -53,14 +56,14 @@ isDataReady.clear()
 class ppgAlgoThread(Thread):
     def run(self):
         global AnalyzerDataBuff
-        init()
         while True:
+            print("Entered algo thread")
             isDataReady.wait()
             algoPpgSensorBuff = copy.deepcopy(AnalyzerDataBuff)
             isDataReady.clear()
             
             # print(algoPpgSensorBuff)
-            print(len(algoPpgSensorBuff))
+            # print(len(algoPpgSensorBuff))
             
             print('RAM memory % used:', psutil.virtual_memory()[2])
             start = time.time()
@@ -78,10 +81,11 @@ class ppgAlgoThread(Thread):
             
             
             #Add decision making code
-            time.sleep(10)
+            # time.sleep(10)
             
-            message = True
+            message = [1]
             radio.write(message)
+            time.sleep(1)
             
 
 class SenReaderThread(Thread):
